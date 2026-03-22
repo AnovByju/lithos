@@ -10,7 +10,7 @@
  * Pool is re-ranked every N interactions using weighted scores.
  */
 
-import type { LitItem, LitType } from "./literature-data"
+import type { LitItem, LitType } from "@/lib/literature-data"
 
 const ALGO_KEY = "lithos_algo"
 
