@@ -8,18 +8,37 @@ import { LITERATURE, shuffled, TYPE_COLORS, type LitItem, type LitType } from "@
 import { LitCard } from "@/components/lit-card"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 
-// Lazy-load the heavy shader only when visible
 const ShaderAnimation = dynamic(
   () => import("@/components/ui/shader-animation").then(m => ({ default: m.ShaderAnimation })),
   { ssr: false }
 )
 
 const ALL_TYPES: LitType[] = ["poem", "quote", "story", "letter", "diary", "essay", "philosophy"]
+const STORAGE_KEY = "lithos_saved_items"
 
-// Build an infinite pool by repeating the list 4× shuffled
 function buildPool(filter: LitType | "all"): LitItem[] {
   const base = filter === "all" ? LITERATURE : LITERATURE.filter(i => i.type === filter)
   return [...shuffled(base), ...shuffled(base), ...shuffled(base), ...shuffled(base)]
+}
+
+function loadSaved(): LitItem[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return []
+    return JSON.parse(raw) as LitItem[]
+  } catch {
+    return []
+  }
+}
+
+function persistSaved(items: LitItem[]) {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+    const ids = items.map(i => i.id).join(",")
+    document.cookie = `lithos_saved_ids=${encodeURIComponent(ids)};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`
+  } catch {}
 }
 
 export default function LithosPage() {
@@ -32,13 +51,22 @@ export default function LithosPage() {
   const [activeFilter, setActiveFilter] = useState<LitType | "all">("all")
   const [navVisible, setNavVisible] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
+  const [hydrated, setHydrated] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const lastScrollY = useRef(0)
-  const scrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Refill pool when near end
+  // Load saved from localStorage on first mount
+  useEffect(() => {
+    const stored = loadSaved()
+    if (stored.length > 0) {
+      setSavedItems(stored)
+      setSavedIds(new Set(stored.map(i => i.id)))
+    }
+    setHydrated(true)
+  }, [])
+
   useEffect(() => {
     if (activeIdx >= pool.length - 8) {
       setPool(prev => [...prev, ...shuffled(
@@ -47,33 +75,23 @@ export default function LithosPage() {
     }
   }, [activeIdx, activeFilter, pool.length])
 
-  // Snap scroll handler
   const handleScroll = useCallback(() => {
     const el = containerRef.current
     if (!el) return
-
     const scrollY = el.scrollTop
     const h = el.clientHeight
-    const newIdx = Math.round(scrollY / h)
-    setActiveIdx(newIdx)
-
-    // Hide nav on scroll down, show on scroll up
+    setActiveIdx(Math.round(scrollY / h))
     const delta = scrollY - lastScrollY.current
     lastScrollY.current = scrollY
     if (Math.abs(delta) > 2) setNavVisible(delta < 0 || scrollY < h * 0.5)
   }, [])
 
-  // Keyboard navigation
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = containerRef.current
       if (!el) return
-      if (e.key === "ArrowDown" || e.key === "j") {
-        el.scrollBy({ top: el.clientHeight, behavior: "smooth" })
-      }
-      if (e.key === "ArrowUp" || e.key === "k") {
-        el.scrollBy({ top: -el.clientHeight, behavior: "smooth" })
-      }
+      if (e.key === "ArrowDown" || e.key === "j") el.scrollBy({ top: el.clientHeight, behavior: "smooth" })
+      if (e.key === "ArrowUp"   || e.key === "k") el.scrollBy({ top: -el.clientHeight, behavior: "smooth" })
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -90,12 +108,20 @@ export default function LithosPage() {
       const next = new Set(prev)
       if (next.has(item.id)) {
         next.delete(item.id)
-        setSavedItems(s => s.filter(i => i.id !== item.id))
+        setSavedItems(s => {
+          const updated = s.filter(i => i.id !== item.id)
+          persistSaved(updated)
+          return updated
+        })
         showToast("Removed from collection")
       } else {
         next.add(item.id)
-        setSavedItems(s => [item, ...s])
-        showToast("Saved to your collection")
+        setSavedItems(s => {
+          const updated = [item, ...s]
+          persistSaved(updated)
+          return updated
+        })
+        showToast("Saved — it'll be here when you return ✦")
       }
       return next
     })
@@ -115,7 +141,6 @@ export default function LithosPage() {
     el.scrollBy({ top: dir * el.clientHeight, behavior: "smooth" })
   }, [])
 
-  // Only render cards within ±2 of active for performance
   const visiblePool = useMemo(() => {
     const start = Math.max(0, activeIdx - 2)
     const end = Math.min(pool.length - 1, activeIdx + 3)
@@ -124,20 +149,16 @@ export default function LithosPage() {
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-black">
-      {/* Shader background — always mounted, low power */}
       <div className="absolute inset-0 z-0">
         <ShaderAnimation opacity={0.55} />
       </div>
 
-      {/* Dark vignette overlay */}
       <div
         className="absolute inset-0 z-[1] pointer-events-none"
-        style={{
-          background: "radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.65) 100%)"
-        }}
+        style={{ background: "radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.65) 100%)" }}
       />
 
-      {/* ── NAV ── */}
+      {/* NAV */}
       <nav
         className={cn(
           "absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-5 h-14",
@@ -151,26 +172,17 @@ export default function LithosPage() {
           borderBottom: "1px solid rgba(255,255,255,0.06)",
         }}
       >
-        {/* Logo */}
         <div className="flex items-center gap-2">
           <BookOpen size={18} strokeWidth={1.5} className="text-white/70" />
-          <span
-            className="text-[19px] text-white tracking-[-0.5px]"
-            style={{ fontFamily: "Times New Roman, serif" }}
-          >
+          <span className="text-[19px] text-white tracking-[-0.5px]" style={{ fontFamily: "Times New Roman, serif" }}>
             Lithos
           </span>
-          <span
-            className="text-[10px] text-white/30 uppercase tracking-widest ml-1 mt-1"
-            style={{ fontFamily: "Helvetica Neue, sans-serif" }}
-          >
+          <span className="text-[10px] text-white/30 uppercase tracking-widest ml-1 mt-1" style={{ fontFamily: "Helvetica Neue, sans-serif" }}>
             Literature
           </span>
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2">
-          {/* Filter */}
           <button
             onClick={() => setFilterOpen(o => !o)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] transition-all duration-200 active:scale-95"
@@ -185,7 +197,6 @@ export default function LithosPage() {
             {activeFilter === "all" ? "All" : activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1)}
           </button>
 
-          {/* Saved */}
           <button
             onClick={() => setPanelOpen(true)}
             className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] transition-all duration-200 active:scale-95"
@@ -198,7 +209,7 @@ export default function LithosPage() {
           >
             <Bookmark size={11} strokeWidth={1.5} />
             Saved
-            {savedIds.size > 0 && (
+            {hydrated && savedIds.size > 0 && (
               <span
                 className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white font-semibold"
                 style={{ background: "#0a84ff" }}
@@ -212,13 +223,10 @@ export default function LithosPage() {
         </div>
       </nav>
 
-      {/* ── FILTER DROPDOWN ── */}
+      {/* FILTER DROPDOWN */}
       {filterOpen && (
         <>
-          <div
-            className="absolute inset-0 z-[45]"
-            onClick={() => setFilterOpen(false)}
-          />
+          <div className="absolute inset-0 z-[45]" onClick={() => setFilterOpen(false)} />
           <div
             className="absolute top-16 right-4 z-[46] rounded-2xl overflow-hidden p-1.5 flex flex-col gap-0.5"
             style={{
@@ -251,32 +259,20 @@ export default function LithosPage() {
         </>
       )}
 
-      {/* ── SNAP SCROLL FEED ── */}
+      {/* SNAP SCROLL FEED */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
         className="absolute inset-0 z-[2] overflow-y-scroll"
-        style={{
-          scrollSnapType: "y mandatory",
-          WebkitOverflowScrolling: "touch",
-          scrollbarWidth: "none",
-        }}
+        style={{ scrollSnapType: "y mandatory", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}
       >
-        <style>{`
-          div::-webkit-scrollbar { display: none; }
-        `}</style>
-
         {pool.map((item, i) => {
           const isInWindow = i >= visiblePool.start && i < visiblePool.start + visiblePool.items.length
           return (
             <div
               key={`${item.id}-${i}`}
               className="w-full flex-shrink-0"
-              style={{
-                height: "100dvh",
-                scrollSnapAlign: "start",
-                scrollSnapStop: "always",
-              }}
+              style={{ height: "100dvh", scrollSnapAlign: "start", scrollSnapStop: "always" }}
             >
               {isInWindow && (
                 <LitCard
@@ -291,7 +287,7 @@ export default function LithosPage() {
         })}
       </div>
 
-      {/* ── NAV ARROWS ── */}
+      {/* NAV ARROWS */}
       <div
         className={cn(
           "absolute right-4 bottom-8 z-30 flex flex-col gap-2 transition-all duration-400",
@@ -302,28 +298,20 @@ export default function LithosPage() {
           onClick={() => navigate(-1)}
           disabled={activeIdx === 0}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 disabled:opacity-20"
-          style={{
-            background: "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            backdropFilter: "blur(12px)",
-          }}
+          style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", backdropFilter: "blur(12px)" }}
         >
           <ChevronUp size={16} className="text-white/70" />
         </button>
         <button
           onClick={() => navigate(1)}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90"
-          style={{
-            background: "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            backdropFilter: "blur(12px)",
-          }}
+          style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", backdropFilter: "blur(12px)" }}
         >
           <ChevronDown size={16} className="text-white/70" />
         </button>
       </div>
 
-      {/* ── PROGRESS DOTS ── */}
+      {/* PROGRESS DOTS */}
       <div className="absolute left-3 top-1/2 -translate-y-1/2 z-30 flex flex-col gap-1.5">
         {Array.from({ length: Math.min(7, pool.length) }).map((_, i) => {
           const dist = Math.abs(activeIdx - i)
@@ -343,13 +331,10 @@ export default function LithosPage() {
         })}
       </div>
 
-      {/* ── SAVED PANEL ── */}
+      {/* SAVED PANEL */}
       {panelOpen && (
         <div className="absolute inset-0 z-[60] flex">
-          <div
-            className="flex-1 bg-black/30 backdrop-blur-sm"
-            onClick={() => setPanelOpen(false)}
-          />
+          <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={() => setPanelOpen(false)} />
           <div
             className="w-full max-w-sm h-full flex flex-col"
             style={{
@@ -359,14 +344,20 @@ export default function LithosPage() {
               borderLeft: "1px solid rgba(255,255,255,0.08)",
             }}
           >
-            {/* Panel header */}
             <div
               className="flex items-center justify-between px-6 py-5 border-b"
               style={{ borderColor: "rgba(255,255,255,0.06)" }}
             >
-              <span className="text-white text-[20px]" style={{ fontFamily: "Times New Roman, serif" }}>
-                Your Collection
-              </span>
+              <div>
+                <span className="text-white text-[20px]" style={{ fontFamily: "Times New Roman, serif" }}>
+                  Your Collection
+                </span>
+                {savedItems.length > 0 && (
+                  <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)", fontFamily: "Helvetica Neue, sans-serif" }}>
+                    {savedItems.length} piece{savedItems.length !== 1 ? "s" : ""} saved to this browser
+                  </p>
+                )}
+              </div>
               <button
                 onClick={() => setPanelOpen(false)}
                 className="w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90"
@@ -376,36 +367,28 @@ export default function LithosPage() {
               </button>
             </div>
 
-            {/* Panel items */}
             <div className="flex-1 overflow-y-auto py-4 px-4 flex flex-col gap-3">
               {savedItems.length === 0 ? (
-                <div
-                  className="text-center mt-16 text-[16px] italic"
-                  style={{ color: "rgba(255,255,255,0.25)", fontFamily: "Times New Roman, serif" }}
-                >
-                  Your saved pieces will appear here.
+                <div className="text-center mt-16 flex flex-col items-center gap-3">
+                  <Bookmark size={28} strokeWidth={1} className="text-white/20" />
+                  <p className="text-[16px] italic" style={{ color: "rgba(255,255,255,0.25)", fontFamily: "Times New Roman, serif" }}>
+                    Nothing saved yet.
+                  </p>
+                  <p className="text-[12px] text-center leading-relaxed" style={{ color: "rgba(255,255,255,0.18)", fontFamily: "Helvetica Neue, sans-serif" }}>
+                    Tap Save on any piece and it will stay<br />here even after you close the tab.
+                  </p>
                 </div>
               ) : (
                 savedItems.map(item => (
                   <div
                     key={item.id}
                     className="rounded-2xl p-4 relative overflow-hidden"
-                    style={{
-                      background: "rgba(255,255,255,0.04)",
-                      border: "1px solid rgba(255,255,255,0.07)",
-                    }}
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
                   >
-                    <div
-                      className="absolute left-0 top-0 bottom-0 w-0.5"
-                      style={{ background: TYPE_COLORS[item.type] }}
-                    />
+                    <div className="absolute left-0 top-0 bottom-0 w-0.5" style={{ background: TYPE_COLORS[item.type] }} />
                     <div
                       className="text-[11px] font-medium uppercase tracking-wider mb-2"
-                      style={{
-                        color: TYPE_COLORS[item.type],
-                        fontFamily: "Helvetica Neue, sans-serif",
-                        letterSpacing: "0.5px"
-                      }}
+                      style={{ color: TYPE_COLORS[item.type], fontFamily: "Helvetica Neue, sans-serif", letterSpacing: "0.5px" }}
                     >
                       {item.author} · {item.type}
                     </div>
@@ -418,11 +401,7 @@ export default function LithosPage() {
                     <button
                       onClick={() => handleSave(item)}
                       className="mt-3 text-[11px] px-2.5 py-1 rounded-full transition-all active:scale-95"
-                      style={{
-                        fontFamily: "Helvetica Neue, sans-serif",
-                        color: "rgba(255,255,255,0.3)",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                      }}
+                      style={{ fontFamily: "Helvetica Neue, sans-serif", color: "rgba(255,255,255,0.3)", border: "1px solid rgba(255,255,255,0.1)" }}
                     >
                       Remove
                     </button>
@@ -430,11 +409,33 @@ export default function LithosPage() {
                 ))
               )}
             </div>
+
+            {savedItems.length > 0 && (
+              <div className="px-4 pb-6 pt-2 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                <button
+                  onClick={() => {
+                    setSavedItems([])
+                    setSavedIds(new Set())
+                    persistSaved([])
+                    showToast("Collection cleared")
+                  }}
+                  className="w-full py-2.5 rounded-xl text-[12px] transition-all active:scale-98"
+                  style={{
+                    fontFamily: "Helvetica Neue, sans-serif",
+                    color: "rgba(255,255,255,0.3)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.03)",
+                  }}
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── TOAST ── */}
+      {/* TOAST */}
       <div
         className={cn(
           "absolute bottom-6 left-1/2 -translate-x-1/2 z-[70] px-5 py-2.5 rounded-full text-[13px] text-white",
