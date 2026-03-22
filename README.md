@@ -1,5 +1,7 @@
 why not doom scroll literature
-→ lithos-two.vercel.app
+→ [lithos-two.vercel.app](https://lithos-two.vercel.app)
+
+
 Swipe through poems, quotes, stories and philosophy from the greatest writers in human history. Shakespeare, Rumi, Da Vinci, Kafka, Plato and 35+ more — one piece at a time, full screen, forever.
 Show Image
 
