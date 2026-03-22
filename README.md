@@ -1,101 +1,42 @@
-# Lithos — Infinite Literature
+why not doom scroll literature
+lithos-two.vercel.app — TikTok-style infinite scroll through the greatest writing in human history.
+Show Image
+Swipe through poems, quotes, stories, letters and philosophy from Shakespeare, Rumi, Da Vinci, Kafka, Plato and 35+ more. One piece at a time. Full screen. Forever.
 
-> A TikTok-style infinite scroll feed for literature. Discover poems, quotes, stories, letters and philosophy from history's greatest minds — Shakespeare, Rumi, Da Vinci, Kafka and more.
+What's inside
 
-![Lithos Preview](https://images.unsplash.com/photo-1512820790803-83ca734da794?w=1200&q=80)
+Snap scroll — one piece per swipe, just like TikTok
+48+ real literary works across 26 centuries
+Filter by Poems, Quotes, Stories, Letters, Diaries, Philosophy
+Save pieces to your personal collection
+Every piece links to its Wikipedia / Internet Archive source
+WebGL animated background via Three.js
+Works on mobile and desktop
 
-## ✨ Features
 
-- **TikTok-style snap scroll** — one piece at a time, full screen
-- **48+ authentic literary works** from 40+ authors across 26 centuries
-- **Live WebGL shader background** via Three.js
-- **Apple Liquid Glass aesthetic** — frosted glass cards, specular highlights, physics tilt
-- **Auto-hiding navbar** — disappears on scroll down, returns on scroll up
-- **Save collection** — bookmark pieces to your personal panel
-- **Filter by type** — Poems, Quotes, Stories, Letters, Diaries, Essays, Philosophy
-- **Virtual windowing** — only ±2 cards rendered at a time for performance
-- **Source links** — every piece links back to Wikipedia or Internet Archive
-- **Keyboard navigation** — `↑` / `↓` or `j` / `k`
-- **Infinite pool** — shuffled & looped, never repeats immediately
-
-## 🛠 Tech Stack
-
-- **Next.js 14** (App Router)
-- **TypeScript**
-- **Tailwind CSS**
-- **Three.js** — WebGL shader animation
-- **shadcn/ui** project structure
-- **lucide-react** — icons
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Node.js 18+ ([nodejs.org](https://nodejs.org))
-- npm or yarn
-
-### Installation
-
-```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/lithos.git
+Run it locally
+You need Node.js installed first.
+bashgit clone https://github.com/AnovByju/lithos.git
 cd lithos
-
-# Install dependencies
 npm install
-
-# Run dev server
 npm run dev
-```
+Open http://localhost:3000
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Add a new literary piece
+Open lib/literature-data.ts and add to the LITERATURE array:
+ts{
+  id: "unique_id",
+  author: "Author Name",
+  era: "1800–1850 · Nationality & Role",
+  type: "quote",  // poem | quote | story | letter | diary | essay | philosophy
+  title: "Work Title",
+  content: "The text goes here.",
+  source: "Wikipedia — Work Title",
+  sourceUrl: "https://en.wikipedia.org/wiki/Work_Title"
+},
+Save → git push → live in 30 seconds on Vercel.
 
-### Build for Production
-
-```bash
-npm run build
-npm start
-```
-
-## 📁 Project Structure
-
-```
-lithos/
-├── app/
-│   ├── layout.tsx          # Root layout with metadata
-│   ├── page.tsx            # Main TikTok-style feed page
-│   └── globals.css         # Global styles & CSS variables
-├── components/
-│   ├── lit-card.tsx        # Full-screen literature card
-│   └── ui/
-│       ├── shader-animation.tsx   # Three.js WebGL background
-│       ├── theme-toggle.tsx       # Dark/light toggle
-│       └── gooey-text.tsx         # Morphing text effect
-├── lib/
-│   ├── literature-data.ts  # All 48 literary pieces + types
-│   └── utils.ts            # Tailwind cn() helper
-├── package.json
-├── tailwind.config.ts
-└── tsconfig.json
-```
-
-## 🌐 Deploy to Vercel
-
-The easiest way to deploy is via [Vercel](https://vercel.com):
-
-```bash
-npm install -g vercel
-vercel
-```
-
-Or connect your GitHub repo directly at [vercel.com/new](https://vercel.com/new).
-
-## 📚 Literature Sources
-
-All content sourced from:
-- [Wikipedia](https://en.wikipedia.org) — public domain literary works
-- [Internet Archive](https://archive.org) — digitized manuscripts and notebooks
-
-## 📄 License
-
-MIT — free to use, modify and distribute.
+Tech
+Next.js 14 · TypeScript · Tailwind CSS · Three.js · shadcn/ui
+License
+MIT
