@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
-import { Bookmark, X, ChevronUp, ChevronDown, Filter, BookOpen } from "lucide-react"
+import { Bookmark, X, ChevronUp, ChevronDown, BookOpen, Loader2 } from "lucide-react"
 import dynamic from "next/dynamic"
 import { cn } from "@/lib/utils"
-import { LITERATURE, TYPE_COLORS, type LitItem, type LitType } from "@/lib/literature-data"
+import { TYPE_COLORS, type LitItem, type LitType } from "@/lib/literature-data"
 import { LitCard } from "@/components/lit-card"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { loadAlgo, saveAlgo, applySignal, buildRankedPool, type AlgoState } from "@/lib/algo"
+import { fetchLiteratureBatch } from "@/lib/fetcher"
 
 const ShaderAnimation = dynamic(
   () => import("@/components/ui/shader-animation").then(m => ({ default: m.ShaderAnimation })),
@@ -15,10 +16,9 @@ const ShaderAnimation = dynamic(
 )
 
 const ALL_TYPES: LitType[] = ["poem", "quote", "story", "letter", "diary", "essay", "philosophy"]
-const SAVED_KEY   = "lithos_saved_items"
-const LIKED_KEY   = "lithos_liked_ids"
+const SAVED_KEY = "lithos_saved_items"
+const LIKED_KEY = "lithos_liked_ids"
 
-// ── Persistence helpers ────────────────────────────────────────────────────────
 function loadSaved(): LitItem[] {
   if (typeof window === "undefined") return []
   try { return JSON.parse(localStorage.getItem(SAVED_KEY) || "[]") } catch { return [] }
@@ -41,82 +41,91 @@ function persistLikedIds(ids: Set<string>) {
 }
 
 export default function LithosPage() {
-  const [algo, setAlgo]           = useState<AlgoState | null>(null)
-  const [pool, setPool]           = useState<LitItem[]>([])
-  const [activeIdx, setActiveIdx] = useState(0)
-  const [savedIds, setSavedIds]   = useState<Set<string>>(new Set())
-  const [savedItems, setSavedItems] = useState<LitItem[]>([])
-  const [likedIds, setLikedIds]   = useState<Set<string>>(new Set())
+  const [algo, setAlgo]               = useState<AlgoState | null>(null)
+  const [pool, setPool]               = useState<LitItem[]>([])
+  const [activeIdx, setActiveIdx]     = useState(0)
+  const [savedIds, setSavedIds]       = useState<Set<string>>(new Set())
+  const [savedItems, setSavedItems]   = useState<LitItem[]>([])
+  const [likedIds, setLikedIds]       = useState<Set<string>>(new Set())
   const [dislikedIds, setDislikedIds] = useState<Set<string>>(new Set())
-  const [panelOpen, setPanelOpen] = useState(false)
-  const [filterOpen, setFilterOpen] = useState(false)
+  const [panelOpen, setPanelOpen]     = useState(false)
+  const [filterOpen, setFilterOpen]   = useState(false)
   const [activeFilter, setActiveFilter] = useState<LitType | "all">("all")
-  const [navVisible, setNavVisible] = useState(true)
-  const [toast, setToast]         = useState<string | null>(null)
-  const [hydrated, setHydrated]   = useState(false)
+  const [navVisible, setNavVisible]   = useState(true)
+  const [toast, setToast]             = useState<string | null>(null)
+  const [hydrated, setHydrated]       = useState(false)
+  const [fetching, setFetching]       = useState(false)
 
   const containerRef  = useRef<HTMLDivElement>(null)
   const lastScrollY   = useRef(0)
   const toastTimeout  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const algoRef       = useRef<AlgoState | null>(null)
+  const fetchingRef   = useRef(false)
+  const allFetched    = useRef<LitItem[]>([])
 
-  // ── Hydrate everything from localStorage on mount ──────────────────────────
+  // ── Initial fetch ──────────────────────────────────────────────────────────
   useEffect(() => {
     const storedAlgo  = loadAlgo()
     const storedSaved = loadSaved()
     const storedLiked = loadLikedIds()
-
-    algoRef.current = storedAlgo
+    algoRef.current   = storedAlgo
     setAlgo(storedAlgo)
-
-    // Disliked IDs live inside algo state
     setDislikedIds(new Set(storedAlgo.dislikedIds))
     setLikedIds(storedLiked)
-
     if (storedSaved.length > 0) {
       setSavedItems(storedSaved)
       setSavedIds(new Set(storedSaved.map(i => i.id)))
     }
-
-    const initialPool = buildRankedPool(LITERATURE, "all", storedAlgo)
-    setPool(initialPool)
     setHydrated(true)
+
+    // Kick off first batch fetch
+    loadMoreItems(storedAlgo, true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Rebuild & re-rank pool when algo changes significantly ─────────────────
-  const rebuildPool = useCallback((state: AlgoState, filter: LitType | "all") => {
-    setPool(buildRankedPool(LITERATURE, filter, state))
-    setActiveIdx(0)
-    containerRef.current?.scrollTo({ top: 0 })
-  }, [])
+  // ── Fetch more items from Wikipedia ───────────────────────────────────────
+  const loadMoreItems = useCallback(async (currentAlgo: AlgoState, initial = false) => {
+    if (fetchingRef.current) return
+    fetchingRef.current = true
+    if (initial) setFetching(true)
 
-  // ── Refill pool tail when near end ─────────────────────────────────────────
+    try {
+      const newItems = await fetchLiteratureBatch(16)
+      if (newItems.length === 0) return
+
+      allFetched.current = [...allFetched.current, ...newItems]
+
+      setPool(prev => {
+        const toAdd = activeFilter === "all"
+          ? newItems
+          : newItems.filter(i => i.type === activeFilter)
+        const filtered = toAdd.filter(i => !currentAlgo.dislikedIds.includes(i.id))
+        if (initial) return buildRankedPool(filtered, "all", currentAlgo, 1)
+        return [...prev, ...filtered]
+      })
+    } finally {
+      fetchingRef.current = false
+      setFetching(false)
+    }
+  }, [activeFilter])
+
+  // ── Refill when near end ───────────────────────────────────────────────────
   useEffect(() => {
     if (!algo) return
-    if (activeIdx >= pool.length - 8) {
-      setPool(prev => [
-        ...prev,
-        ...buildRankedPool(
-          LITERATURE,
-          activeFilter,
-          algo,
-          2  // add 2 more shuffled copies
-        )
-      ])
+    if (activeIdx >= pool.length - 6) {
+      loadMoreItems(algo)
     }
-  }, [activeIdx, activeFilter, pool.length, algo])
+  }, [activeIdx, pool.length, algo, loadMoreItems])
 
   // ── Scroll handler ─────────────────────────────────────────────────────────
   const handleScroll = useCallback(() => {
     const el = containerRef.current
     if (!el) return
     const scrollY = el.scrollTop
-    const h = el.clientHeight
-    const newIdx = Math.round(scrollY / h)
-
+    const h       = el.clientHeight
+    const newIdx  = Math.round(scrollY / h)
     if (newIdx !== activeIdx) {
       setActiveIdx(newIdx)
-      // Record a view signal for the newly active item
       const item = pool[newIdx]
       if (item && algoRef.current) {
         const next = applySignal(algoRef.current, item, "view")
@@ -125,13 +134,12 @@ export default function LithosPage() {
         setAlgo(next)
       }
     }
-
     const delta = scrollY - lastScrollY.current
     lastScrollY.current = scrollY
     if (Math.abs(delta) > 2) setNavVisible(delta < 0 || scrollY < h * 0.5)
   }, [activeIdx, pool])
 
-  // ── Keyboard navigation ────────────────────────────────────────────────────
+  // ── Keyboard nav ───────────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = containerRef.current
@@ -146,19 +154,33 @@ export default function LithosPage() {
   const showToast = useCallback((msg: string) => {
     setToast(msg)
     if (toastTimeout.current) clearTimeout(toastTimeout.current)
-    toastTimeout.current = setTimeout(() => setToast(null), 2200)
+    toastTimeout.current = setTimeout(() => setToast(null), 2400)
   }, [])
 
-  // ── Update algo state helper ───────────────────────────────────────────────
   const updateAlgo = useCallback((item: LitItem, signal: "like" | "dislike" | "save" | "view") => {
     const current = algoRef.current
-    if (!current) return
+    if (!current) return undefined
     const next = applySignal(current, item, signal)
     algoRef.current = next
     saveAlgo(next)
     setAlgo(next)
     return next
   }, [])
+
+  // ── Navigate to saved item ─────────────────────────────────────────────────
+  const navigateToItem = useCallback((item: LitItem) => {
+    setPanelOpen(false)
+    const el = containerRef.current
+    if (!el) return
+    const idx = pool.findIndex(p => p.id === item.id)
+    if (idx !== -1) {
+      setTimeout(() => el.scrollTo({ top: idx * el.clientHeight, behavior: "smooth" }), 300)
+    } else {
+      setPool(prev => [item, ...prev])
+      setActiveIdx(0)
+      setTimeout(() => el.scrollTo({ top: 0, behavior: "smooth" }), 300)
+    }
+  }, [pool])
 
   // ── Save ───────────────────────────────────────────────────────────────────
   const handleSave = useCallback((item: LitItem) => {
@@ -182,13 +204,11 @@ export default function LithosPage() {
   const handleLike = useCallback((item: LitItem) => {
     setLikedIds(prev => {
       const next = new Set(prev)
-      // Toggle like off if already liked
       if (next.has(item.id)) {
         next.delete(item.id)
         showToast("Like removed")
       } else {
         next.add(item.id)
-        // Remove from disliked if switching
         setDislikedIds(d => { const nd = new Set(d); nd.delete(item.id); return nd })
         updateAlgo(item, "like")
         showToast("Liked — we'll show you more like this ✦")
@@ -203,30 +223,39 @@ export default function LithosPage() {
     setDislikedIds(prev => {
       const next = new Set(prev)
       if (next.has(item.id)) {
-        // Toggle off
         next.delete(item.id)
         showToast("Removed dislike")
       } else {
         next.add(item.id)
-        // Remove from liked if switching
         setLikedIds(l => { const nl = new Set(l); nl.delete(item.id); persistLikedIds(nl); return nl })
         const nextAlgo = updateAlgo(item, "dislike")
         showToast("Got it — we'll show less of this")
-        // Rebuild pool so disliked items are removed immediately
         if (nextAlgo) {
-          setTimeout(() => rebuildPool(nextAlgo, activeFilter), 600)
+          setPool(prev => prev.filter(p => p.id !== item.id))
         }
       }
       return next
     })
-  }, [showToast, updateAlgo, rebuildPool, activeFilter])
+  }, [showToast, updateAlgo])
 
   // ── Filter ─────────────────────────────────────────────────────────────────
   const applyFilter = useCallback((f: LitType | "all") => {
     setActiveFilter(f)
-    if (algo) rebuildPool(algo, f)
+    setActiveIdx(0)
+    containerRef.current?.scrollTo({ top: 0 })
     setFilterOpen(false)
-  }, [algo, rebuildPool])
+
+    const filtered = f === "all"
+      ? allFetched.current
+      : allFetched.current.filter(i => i.type === f)
+
+    if (algo) {
+      setPool(buildRankedPool(filtered.length > 0 ? filtered : allFetched.current, "all", algo, 1))
+    }
+
+    // Fetch fresh batch for this filter
+    if (algo) loadMoreItems(algo)
+  }, [algo, loadMoreItems])
 
   const navigate = useCallback((dir: 1 | -1) => {
     containerRef.current?.scrollBy({ top: dir * (containerRef.current?.clientHeight ?? 0), behavior: "smooth" })
@@ -240,16 +269,12 @@ export default function LithosPage() {
 
   return (
     <div className="relative w-full overflow-hidden bg-black" style={{ height: "100dvh" }}>
-      {/* Shader background */}
-      <div className="absolute inset-0 z-0">
-        <ShaderAnimation opacity={0.55} />
-      </div>
+      <div className="absolute inset-0 z-0"><ShaderAnimation opacity={0.55} /></div>
       <div className="absolute inset-0 z-[1] pointer-events-none"
         style={{ background: "radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.65) 100%)" }} />
 
-      {/* ── NAV ── */}
-      <nav
-        className={cn(
+      {/* NAV */}
+      <nav className={cn(
           "absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-5 h-14",
           "transition-transform duration-300 ease-in-out",
           navVisible ? "translate-y-0" : "-translate-y-full"
@@ -260,14 +285,21 @@ export default function LithosPage() {
           WebkitBackdropFilter: "blur(32px) saturate(150%)",
           borderBottom: "1px solid rgba(255,255,255,0.06)",
           paddingTop: "env(safe-area-inset-top)",
-        }}
-      >
+        }}>
         <div className="flex items-center gap-2">
           <BookOpen size={18} strokeWidth={1.5} className="text-white/70" />
           <span className="text-[19px] text-white tracking-[-0.5px]" style={{ fontFamily: "Times New Roman, serif" }}>Lithos</span>
           <span className="text-[10px] text-white/30 uppercase tracking-widest ml-1 mt-1" style={{ fontFamily: "Helvetica Neue, sans-serif" }}>Literature</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Live fetch indicator */}
+          {fetching && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <Loader2 size={10} className="text-white/30 animate-spin" />
+              <span className="text-[10px] text-white/30" style={{ fontFamily: "Helvetica Neue, sans-serif" }}>Fetching…</span>
+            </div>
+          )}
           <button onClick={() => setFilterOpen(o => !o)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] transition-all duration-200 active:scale-95"
             style={{
@@ -300,7 +332,7 @@ export default function LithosPage() {
         </div>
       </nav>
 
-      {/* ── FILTER DROPDOWN ── */}
+      {/* FILTER DROPDOWN */}
       {filterOpen && (
         <>
           <div className="absolute inset-0 z-[45]" onClick={() => setFilterOpen(false)} />
@@ -326,33 +358,47 @@ export default function LithosPage() {
         </>
       )}
 
-      {/* ── SNAP SCROLL FEED ── */}
+      {/* FEED */}
       <div ref={containerRef} onScroll={handleScroll}
         className="absolute inset-0 z-[2] overflow-y-scroll"
         style={{ scrollSnapType: "y mandatory", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", overscrollBehavior: "none" }}>
+
+        {/* Loading skeleton on first load */}
+        {pool.length === 0 && fetching && (
+          <div className="w-full flex-shrink-0 flex items-center justify-center"
+            style={{ height: "100dvh" }}>
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 size={28} className="text-white/20 animate-spin" />
+              <p className="text-[14px] italic" style={{ color: "rgba(255,255,255,0.2)", fontFamily: "Times New Roman, serif" }}>
+                Fetching literature from Wikipedia…
+              </p>
+            </div>
+          </div>
+        )}
+
         {pool.map((item, i) => {
           const inWindow = i >= visiblePool.start && i < visiblePool.start + visiblePool.items.length
           return (
             <div key={`${item.id}-${i}`} className="w-full flex-shrink-0"
               style={{ height: "100dvh", scrollSnapAlign: "start", scrollSnapStop: "always" }}>
               {inWindow && (
-                <LitCard
-                  item={item}
-                  isActive={i === activeIdx}
-                  savedIds={savedIds}
-                  likedIds={likedIds}
-                  dislikedIds={dislikedIds}
-                  onSave={handleSave}
-                  onLike={handleLike}
-                  onDislike={handleDislike}
-                />
+                <LitCard item={item} isActive={i === activeIdx}
+                  savedIds={savedIds} likedIds={likedIds} dislikedIds={dislikedIds}
+                  onSave={handleSave} onLike={handleLike} onDislike={handleDislike} />
               )}
             </div>
           )
         })}
+
+        {/* Loading more indicator at bottom */}
+        {pool.length > 0 && fetching && (
+          <div className="w-full flex items-center justify-center py-8">
+            <Loader2 size={18} className="text-white/20 animate-spin" />
+          </div>
+        )}
       </div>
 
-      {/* ── NAV ARROWS ── */}
+      {/* NAV ARROWS */}
       <div className={cn("absolute right-4 z-30 flex flex-col gap-2 transition-all duration-300", navVisible ? "opacity-100" : "opacity-50")}
         style={{ bottom: "calc(2rem + env(safe-area-inset-bottom))" }}>
         <button onClick={() => navigate(-1)} disabled={activeIdx === 0}
@@ -367,7 +413,7 @@ export default function LithosPage() {
         </button>
       </div>
 
-      {/* ── PROGRESS DOTS ── */}
+      {/* PROGRESS DOTS */}
       <div className="absolute left-3 top-1/2 -translate-y-1/2 z-30 flex flex-col gap-1.5">
         {Array.from({ length: Math.min(7, pool.length) }).map((_, i) => {
           const dist = Math.abs(activeIdx - i)
@@ -381,7 +427,7 @@ export default function LithosPage() {
         })}
       </div>
 
-      {/* ── SAVED PANEL ── */}
+      {/* SAVED PANEL */}
       {panelOpen && (
         <div className="absolute inset-0 z-[60] flex">
           <div className="flex-1 bg-black/30 backdrop-blur-sm" onClick={() => setPanelOpen(false)} />
@@ -397,7 +443,7 @@ export default function LithosPage() {
                 <span className="text-white text-[20px]" style={{ fontFamily: "Times New Roman, serif" }}>Your Collection</span>
                 {savedItems.length > 0 && (
                   <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)", fontFamily: "Helvetica Neue, sans-serif" }}>
-                    {savedItems.length} piece{savedItems.length !== 1 ? "s" : ""} saved to this browser
+                    {savedItems.length} piece{savedItems.length !== 1 ? "s" : ""} · tap to jump to it
                   </p>
                 )}
               </div>
@@ -419,18 +465,28 @@ export default function LithosPage() {
                 </div>
               ) : (
                 savedItems.map(item => (
-                  <div key={item.id} className="rounded-2xl p-4 relative overflow-hidden"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <div key={item.id}
+                    className="rounded-2xl p-4 relative overflow-hidden cursor-pointer group transition-all duration-200"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+                    onClick={() => navigateToItem(item)}>
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
+                      style={{ background: "rgba(255,255,255,0.03)" }} />
                     <div className="absolute left-0 top-0 bottom-0 w-0.5" style={{ background: TYPE_COLORS[item.type] }} />
-                    <div className="text-[11px] font-medium uppercase tracking-wider mb-2"
-                      style={{ color: TYPE_COLORS[item.type], fontFamily: "Helvetica Neue, sans-serif", letterSpacing: "0.5px" }}>
-                      {item.author} · {item.type}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="text-[11px] font-medium uppercase tracking-wider"
+                        style={{ color: TYPE_COLORS[item.type], fontFamily: "Helvetica Neue, sans-serif", letterSpacing: "0.5px" }}>
+                        {item.author} · {item.type}
+                      </div>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                        className="text-white/20 group-hover:text-white/50 transition-colors flex-shrink-0 mt-0.5">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                      </svg>
                     </div>
                     <div className="text-[14px] leading-relaxed line-clamp-3"
                       style={{ color: "rgba(255,255,255,0.7)", fontFamily: "Times New Roman, serif" }}>
                       {item.content}
                     </div>
-                    <button onClick={() => handleSave(item)}
+                    <button onClick={e => { e.stopPropagation(); handleSave(item) }}
                       className="mt-3 text-[11px] px-2.5 py-1 rounded-full transition-all active:scale-95"
                       style={{ fontFamily: "Helvetica Neue, sans-serif", color: "rgba(255,255,255,0.3)", border: "1px solid rgba(255,255,255,0.1)" }}>
                       Remove
@@ -453,17 +509,17 @@ export default function LithosPage() {
         </div>
       )}
 
-      {/* ── TOAST ── */}
+      {/* TOAST */}
       <div className={cn(
-        "absolute left-1/2 -translate-x-1/2 z-[70] px-5 py-2.5 rounded-full text-[13px] text-white",
-        "transition-all duration-400 pointer-events-none",
-        toast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-      )} style={{
-        bottom: "calc(1.5rem + env(safe-area-inset-bottom))",
-        background: "rgba(30,30,36,0.92)", backdropFilter: "blur(24px)",
-        border: "1px solid rgba(255,255,255,0.1)",
-        fontFamily: "Helvetica Neue, sans-serif", whiteSpace: "nowrap",
-      }}>
+          "absolute left-1/2 -translate-x-1/2 z-[70] px-5 py-2.5 rounded-full text-[13px] text-white",
+          "transition-all duration-400 pointer-events-none",
+          toast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+        )} style={{
+          bottom: "calc(1.5rem + env(safe-area-inset-bottom))",
+          background: "rgba(30,30,36,0.92)", backdropFilter: "blur(24px)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          fontFamily: "Helvetica Neue, sans-serif", whiteSpace: "nowrap",
+        }}>
         {toast}
       </div>
     </div>
