@@ -78,14 +78,14 @@ export default function LithosPage() {
       setSavedIds(new Set(storedSaved.map(i => i.id)))
     }
 
-    const initialPool = buildRankedPool(LITERATURE, "all", storedAlgo)
+    const initialPool = buildRankedPool([], "all", storedAlgo)
     setPool(initialPool)
     setHydrated(true)
   }, [])
 
   // ── Rebuild & re-rank pool when algo changes significantly ─────────────────
   const rebuildPool = useCallback((state: AlgoState, filter: LitType | "all") => {
-    setPool(buildRankedPool(LITERATURE, filter, state))
+    setPool(buildRankedPool([], filter, state))
     setActiveIdx(0)
     containerRef.current?.scrollTo({ top: 0 })
   }, [])
@@ -97,10 +97,10 @@ export default function LithosPage() {
       setPool(prev => [
         ...prev,
         ...buildRankedPool(
-          LITERATURE,
+          [],
           activeFilter,
           algo,
-          2  // add 2 more shuffled copies
+          2
         )
       ])
     }
@@ -353,7 +353,7 @@ export default function LithosPage() {
       </div>
 
       {/* ── NAV ARROWS ── */}
-      <div className={cn("absolute right-3 z-30 flex flex-col gap-2 transition-all duration-300", navVisible ? "opacity-100" : "opacity-50")}
+      <div className={cn("absolute right-4 z-30 flex flex-col gap-2 transition-all duration-300", navVisible ? "opacity-100" : "opacity-50")}
         style={{ bottom: "calc(2rem + env(safe-area-inset-bottom))" }}>
         <button onClick={() => navigate(-1)} disabled={activeIdx === 0}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 disabled:opacity-20"
