@@ -37,7 +37,7 @@ function loadLikedIds(): Set<string> {
 }
 function persistLikedIds(ids: Set<string>) {
   if (typeof window === "undefined") return
-  try { localStorage.setItem(LIKED_KEY, JSON.stringify([...ids])) } catch {}
+  try { localStorage.setItem(LIKED_KEY, JSON.stringify(Array.from(ids))) } catch {}
 }
 
 export default function LithosPage() {
