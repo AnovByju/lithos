@@ -1,4 +1,4 @@
-export type LitType = "poem" | "quote" | "story" | "letter" | "diary" | "essay" | "philosophy"
+export type LitType = "poem" | "quote" | "story" | "letter" | "diary" | "essay" | "philosophy" | "summary"
 
 export interface LitItem {
   id: string
@@ -19,6 +19,7 @@ export const TYPE_COLORS: Record<LitType, string> = {
   diary:      "#30d158",
   essay:      "#ff9f0a",
   philosophy: "#5ac8fa",
+  summary:    "#ff6b35",
 }
 
 export function shuffled<T>(arr: T[]): T[] {
