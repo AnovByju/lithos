@@ -398,20 +398,28 @@ export default function LithosPage() {
               {isThis && likeAmt > 0 && (
                 <div className="absolute inset-0 z-10 flex items-center justify-start pl-8 pointer-events-none"
                   style={{opacity:likeAmt}}>
-                  <div className="flex flex-col items-center gap-1 p-4 rounded-2xl"
-                    style={{background:"rgba(48,209,88,0.2)",border:"2px solid rgba(48,209,88,0.6)"}}>
-                    <span className="text-3xl">👍</span>
-                    <span className="text-[13px] font-semibold text-green-400" style={{fontFamily:"Helvetica Neue, sans-serif"}}>LIKE</span>
+                  <div className="flex flex-col items-center gap-2 px-5 py-4 rounded-2xl"
+                    style={{background:"rgba(48,209,88,0.15)",border:"1.5px solid rgba(48,209,88,0.5)",backdropFilter:"blur(8px)"}}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#30d158" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+                      <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                    </svg>
+                    <span className="text-[11px] font-semibold tracking-widest uppercase"
+                      style={{color:"#30d158",fontFamily:"Helvetica Neue, sans-serif",letterSpacing:"0.1em"}}>Like</span>
                   </div>
                 </div>
               )}
               {isThis && dislikeAmt > 0 && (
                 <div className="absolute inset-0 z-10 flex items-center justify-end pr-8 pointer-events-none"
                   style={{opacity:dislikeAmt}}>
-                  <div className="flex flex-col items-center gap-1 p-4 rounded-2xl"
-                    style={{background:"rgba(255,59,48,0.2)",border:"2px solid rgba(255,59,48,0.6)"}}>
-                    <span className="text-3xl">👎</span>
-                    <span className="text-[13px] font-semibold text-red-400" style={{fontFamily:"Helvetica Neue, sans-serif"}}>NOPE</span>
+                  <div className="flex flex-col items-center gap-2 px-5 py-4 rounded-2xl"
+                    style={{background:"rgba(255,59,48,0.15)",border:"1.5px solid rgba(255,59,48,0.5)",backdropFilter:"blur(8px)"}}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff3b30" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
+                      <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+                    </svg>
+                    <span className="text-[11px] font-semibold tracking-widest uppercase"
+                      style={{color:"#ff3b30",fontFamily:"Helvetica Neue, sans-serif",letterSpacing:"0.1em"}}>Skip</span>
                   </div>
                 </div>
               )}
@@ -456,11 +464,17 @@ export default function LithosPage() {
 
       {/* Swipe hint — shown once */}
       {pool.length>0 && activeIdx===0 && (
-        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 pointer-events-none"
-          style={{opacity:0.4}}>
-          <span className="text-[11px] text-white" style={{fontFamily:"Helvetica Neue, sans-serif"}}>← dislike</span>
-          <div className="w-8 h-px bg-white/30" />
-          <span className="text-[11px] text-white" style={{fontFamily:"Helvetica Neue, sans-serif"}}>like →</span>
+        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 pointer-events-none"
+          style={{opacity:0.35}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff3b30" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
+            <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+          </svg>
+          <span className="text-[10px] text-white/50" style={{fontFamily:"Helvetica Neue, sans-serif"}}>swipe to react</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#30d158" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+            <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+          </svg>
         </div>
       )}
 
