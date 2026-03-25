@@ -337,15 +337,16 @@ export default function LithosPage() {
               style={{ height: "100dvh", scrollSnapAlign: "start", scrollSnapStop: "always" }}>
               {inWindow && (
                 <LitCard
-                  item={item}
-                  isActive={i === activeIdx}
-                  savedIds={savedIds}
-                  likedIds={likedIds}
-                  dislikedIds={dislikedIds}
-                  onSave={handleSave}
-                  onLike={handleLike}
-                  onDislike={handleDislike}
-                />
+  item={item}
+  isActive={i === activeIdx}
+  savedIds={savedIds}
+  likedIds={likedIds}
+  dislikedIds={dislikedIds}
+  onSave={handleSave}
+  onLike={handleLike}
+  onDislike={handleDislike}
+  onDownload={handleDownload}
+/>
               )}
             </div>
           )
